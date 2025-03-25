@@ -1,0 +1,345 @@
+# my snake game code :)
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Customizable Snake Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            transition: background-color 0.3s;
+        }
+
+        body.dark-mode {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+
+        body.dark-mode #gameContainer {
+            background-color: #2c2c2c;
+        }
+
+        #gameContainer {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            transition: all 0.3s;
+        }
+
+        .settings-group {
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #startButton, #themeToggle {
+            padding: 10px 20px;
+            margin: 10px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #startButton:hover, #themeToggle:hover {
+            background-color: #2980b9;
+        }
+
+        #gameBoard {
+            display: none;
+            border: 2px solid #3498db;
+            margin: 0 auto;
+        }
+
+        #gameOverlay, #scoreDisplay {
+            display: none;
+        }
+
+        .game-enter {
+            animation: gameEnter 0.5s ease-out;
+        }
+
+        .game-slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes gameEnter {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <button id="themeToggle" aria-label="Toggle Theme">🌓</button>
+        <div id="startScreen">
+            <h1>Snake Game Settings</h1>
+            <div class="settings-group">
+                <label for="difficulty">Difficulty:</label>
+                <select id="difficulty">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="boardSize">Board Size:</label>
+                <select id="boardSize">
+                    <option value="400">Small (400x400)</option>
+                    <option value="600" selected>Medium (600x600)</option>
+                    <option value="800">Large (800x800)</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="snakeColor">Snake Color:</label>
+                <input type="color" id="snakeColor" value="#3498db">
+            </div>
+            <div class="settings-group">
+                <label for="foodColor">Food Color:</label>
+                <input type="color" id="foodColor" value="#e74c3c">
+            </div>
+            <button id="startButton">Start Game</button>
+        </div>
+
+        <canvas id="gameBoard" width="600" height="600"></canvas>
+        <div id="scoreDisplay">Score: 0</div>
+        <div id="gameOverlay">
+            <h2>Game Over!</h2>
+            <p id="finalScore">Score: 0</p>
+        </div>
+    </div>
+
+    <script>
+        // Theme Toggle Logic
+        const themeToggle = document.getElementById('themeToggle');
+
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            
+            // Update theme toggle icon
+            if (document.body.classList.contains('dark-mode')) {
+                themeToggle.textContent = '☀️';
+            } else {
+                themeToggle.textContent = '🌓';
+            }
+        });
+
+        // Game state and configuration variables
+        const startScreen = document.getElementById('startScreen');
+        const gameBoard = document.getElementById('gameBoard');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const gameOverlay = document.getElementById('gameOverlay');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const startButton = document.getElementById('startButton');
+        const ctx = gameBoard.getContext('2d');
+
+        // Game configuration variables
+        let gridSize, tileCount, snake, food, dx, dy, score, gameSpeed;
+        let snakeColor, foodColor;
+        let gameLoopId;
+
+        // Initialize game settings
+        function initializeGame() {
+            // Get settings from form
+            const difficulty = document.getElementById('difficulty').value;
+            const boardSize = parseInt(document.getElementById('boardSize').value);
+            snakeColor = document.getElementById('snakeColor').value;
+            foodColor = document.getElementById('foodColor').value;
+
+            // Adapt game container and canvas size
+            gameBoard.width = boardSize;
+            gameBoard.height = boardSize;
+            gridSize = 20;
+            tileCount = boardSize / gridSize;
+
+            // Set game speed based on difficulty
+            switch(difficulty) {
+                case 'easy':
+                    gameSpeed = 200;
+                    break;
+                case 'medium':
+                    gameSpeed = 150;
+                    break;
+                case 'hard':
+                    gameSpeed = 100;
+                    break;
+            }
+
+            // Reset game state
+            snake = [{ x: Math.floor(tileCount/2), y: Math.floor(tileCount/2) }];
+            food = generateFood();
+            dx = 1;
+            dy = 0;
+            score = 0;
+
+            // Prepare for transition
+            startScreen.style.display = 'none';
+            gameBoard.style.display = 'block';
+            scoreDisplay.style.display = 'block';
+            gameOverlay.style.display = 'none';
+            
+            // Start game loop
+            gameLoop();
+        }
+
+        function drawGame() {
+            clearCanvas();
+            moveSnake();
+            drawSnake();
+            drawFood();
+            checkCollision();
+            updateScore();
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = document.body.classList.contains('dark-mode') ? '#2c2c2c' : '#e6eaf4';
+            ctx.fillRect(0, 0, gameBoard.width, gameBoard.height);
+        }
+
+        function moveSnake() {
+            const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+            snake.unshift(head);
+
+            if (head.x === food.x && head.y === food.y) {
+                score++;
+                food = generateFood();
+                gameSpeed = Math.max(50, gameSpeed - 5);
+            } else {
+                snake.pop();
+            }
+        }
+
+        function drawSnake() {
+            ctx.fillStyle = snakeColor;
+            snake.forEach(segment => {
+                ctx.fillRect(
+                    segment.x * gridSize, 
+                    segment.y * gridSize, 
+                    gridSize - 2, 
+                    gridSize - 2
+                );
+            });
+        }
+
+        function drawFood() {
+            ctx.fillStyle = foodColor;
+            ctx.fillRect(
+                food.x * gridSize, 
+                food.y * gridSize, 
+                gridSize - 2, 
+                gridSize - 2
+            );
+        }
+
+        function generateFood() {
+            return {
+                x: Math.floor(Math.random() * tileCount),
+                y: Math.floor(Math.random() * tileCount)
+            };
+        }
+
+        function checkCollision() {
+            const head = snake[0];
+
+            // Wall collision
+            if (
+                head.x < 0 || head.x >= tileCount || 
+                head.y < 0 || head.y >= tileCount
+            ) {
+                gameOver();
+            }
+
+            // Self collision
+            for (let i = 1; i < snake.length; i++) {
+                if (head.x === snake[i].x && head.y === snake[i].y) {
+                    gameOver();
+                }
+            }
+        }
+
+        function gameOver() {
+            // Stop the game loop
+            clearTimeout(gameLoopId);
+            
+            // Update final score display
+            finalScoreDisplay.textContent = `Score: ${score}`;
+            
+            // Show game over overlay
+            gameBoard.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            gameOverlay.style.display = 'block';
+        }
+
+        function updateScore() {
+            scoreDisplay.textContent = `Score: ${score}`;
+        }
+
+        function gameLoop() {
+            drawGame();
+            gameLoopId = setTimeout(() => requestAnimationFrame(gameLoop), gameSpeed);
+        }
+
+        // Event Listeners
+        document.addEventListener('keydown', changeDirection);
+
+        function changeDirection(event) {
+            const LEFT_KEY = 37;
+            const RIGHT_KEY = 39;
+            const UP_KEY = 38;
+            const DOWN_KEY = 40;
+
+            const keyPressed = event.keyCode;
+            const goingUp = dy === -1;
+            const goingDown = dy === 1;
+            const goingRight = dx === 1;
+            const goingLeft = dx === -1;
+
+            if (keyPressed === LEFT_KEY && !goingRight) {
+                dx = -1;
+                dy = 0;
+            }
+            if (keyPressed === UP_KEY && !goingDown) {
+                dx = 0;
+                dy = -1;
+            }
+            if (keyPressed === RIGHT_KEY && !goingLeft) {
+                dx = 1;
+                dy = 0;
+            }
+            if (keyPressed === DOWN_KEY && !goingUp) {
+                dx = 0;
+                dy = 1;
+            }
+        }
+
+        // Restart Game Button
+        const restartButton = document.createElement('button');
+        restartButton.textContent = 'Play Again';
+        restartButton.addEventListener('click', () => {
+            gameOverlay.style.display = 'none';
+            startScreen.style.display = 'block';
+        });
+        gameOverlay.appendChild(restartButton);
+
+        // Start Button
+        startButton.addEventListener('click', initializeGame);
+    </script>
+</body>
+</html>
